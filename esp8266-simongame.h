@@ -115,7 +115,7 @@
 
 
 // Define game parameters
-#define ROUNDS_TO_WIN      13 //Number of rounds to succesfully remember before you win. 13 is do-able.
+#define ROUNDS_TO_WIN      5 //Number of rounds to succesfully remember before you win. 13 is do-able.
 #define ENTRY_TIME_LIMIT   10000 //Amount of time to press a button before game times out. 3000ms = 3 sec
 
 #define MODE_MEMORY  0

@@ -1,4 +1,16 @@
 #include "esp8266-simongame.h" 
+#include <ESP8266WiFi.h>
+#include <ESP8266mDNS.h>
+#include <WiFiUdp.h>
+#include <ArduinoOTA.h>
+
+#ifndef STASSID
+#define STASSID "FRITZ!Box 7360 SL"
+#define STAPSK  "3226285563773954"
+#endif
+
+const char* ssid = STASSID;
+const char* password = STAPSK;
 
 // Game state variables
 byte gameMode = MODE_MEMORY; //By default, let's play the memory game
@@ -7,6 +19,63 @@ byte gameRound = 0; //Counts the number of succesful rounds the player has made 
 
 void setup()
 {
+  Serial.begin(115200);
+  Serial.println("Booting");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+    Serial.println("Connection Failed! Rebooting...");
+    delay(5000);
+    ESP.restart();
+  }
+
+  // Port defaults to 8266
+  ArduinoOTA.setPort(8266);
+
+  // Hostname defaults to esp8266-[ChipID]
+  ArduinoOTA.setHostname("Simon");
+
+  // No authentication by default
+  ArduinoOTA.setPassword("Oliver0103");
+
+  ArduinoOTA.onStart([]() {
+    String type;
+    if (ArduinoOTA.getCommand() == U_FLASH) {
+      type = "sketch";
+    } else { // U_FS
+      type = "filesystem";
+    }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println("Start updating " + type);
+  });
+  ArduinoOTA.onEnd([]() {
+    Serial.println("\nEnd");
+  });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  });
+  ArduinoOTA.onError([](ota_error_t error) {
+    Serial.printf("Error[%u]: ", error);
+    if (error == OTA_AUTH_ERROR) {
+      Serial.println("Auth Failed");
+    } else if (error == OTA_BEGIN_ERROR) {
+      Serial.println("Begin Failed");
+    } else if (error == OTA_CONNECT_ERROR) {
+      Serial.println("Connect Failed");
+    } else if (error == OTA_RECEIVE_ERROR) {
+      Serial.println("Receive Failed");
+    } else if (error == OTA_END_ERROR) {
+      Serial.println("End Failed");
+    }
+  });
+  ArduinoOTA.begin();
+  Serial.println("Ready");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+  
+  
   //Setup hardware inputs/outputs. These pins are defined in the hardware_versions header file
 
   //Enable pull ups on inputs
@@ -44,12 +113,12 @@ void setup()
 
     //Now do nothing. Battle mode will be serviced in the main routine
   }
-
   play_winner(); // After setup is complete, say hello to the world
 }
 
 void loop()
 {
+  ArduinoOTA.handle();
   attractMode(); // Blink lights while waiting for user to press a button
 
   // Indicate the start of game play
@@ -62,7 +131,7 @@ void loop()
   {
     // Play memory game and handle result
     if (play_memory() == true) 
-      play_winner(); // Player won, play winner tones
+      play_beegees(); // Player won, play winner tones
     else 
       play_loser(); // Player lost, play loser tones
   }
@@ -407,197 +476,3 @@ void changeLED(void)
   LEDnumber++; // Goto the next LED
   if(LEDnumber > 3) LEDnumber = 0; // Wrap the counter if needed
 }
-
-
-
-
-
-
-/*
-void setup()
-{
-  //Setup hardware inputs/outputs. These pins are defined in the hardware_versions header file
-Serial.begin(115200);
-Serial.println("Begin");
-
-  //Enable pull ups on inputs
-  pinMode(BUTTON_RED, INPUT_PULLUP);
-  pinMode(BUTTON_GREEN, INPUT_PULLUP);
-  pinMode(BUTTON_BLUE, INPUT_PULLUP);
-  pinMode(BUTTON_YELLOW, INPUT_PULLUP);
-
-  pinMode(LED_RED, OUTPUT);
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_BLUE, OUTPUT);
-  pinMode(LED_YELLOW, OUTPUT);
-
-//  pinMode(BUZZER1, OUTPUT);
-//  pinMode(BUZZER2, OUTPUT);
-Serial.println("Setup");
-  //Mode checking
-  gameMode = MODE_MEMORY; // By default, we're going to play the memory game
-
-  // Check to see if upper right button is pressed
-  if (checkButton() == CHOICE_GREEN)
-  {
-    gameMode = MODE_BATTLE; //Put game into battle mode
-
-    //Turn on the upper right (green) LED
-    setLEDs(CHOICE_GREEN);
-//    toner(CHOICE_GREEN, 150);
-Serial.println("setLEDs vorher");
-    setLEDs(CHOICE_RED | CHOICE_BLUE | CHOICE_YELLOW); // Turn on the other LEDs until you release button
-Serial.println("setLEDs nachher");
-
-    while(checkButton() != CHOICE_NONE) ; // Wait for user to stop pressing button
-
-    //Now do nothing. Battle mode will be serviced in the main routine
-  }
-
-}
-
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-//The following functions are related to game play only
-
-//-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-//The following functions control the hardware
-
-// Lights a given LEDs
-// Pass in a byte that is made up from CHOICE_RED, CHOICE_YELLOW, etc
-void setLEDs(byte leds)
-{
-  if ((leds & CHOICE_RED) != 0) {
-    Serial.println("Red");
-    digitalWrite(LED_RED, HIGH);
-  } else
-    digitalWrite(LED_RED, LOW);
-
-  if ((leds & CHOICE_GREEN) != 0) {
-    Serial.println("green");
-    digitalWrite(LED_GREEN, HIGH);
-  } else
-    digitalWrite(LED_GREEN, LOW);
-
-  if ((leds & CHOICE_BLUE) != 0) {
-    Serial.println("blue");
-    digitalWrite(LED_BLUE, HIGH);
-  } else
-    digitalWrite(LED_BLUE, LOW);
-
-  if ((leds & CHOICE_YELLOW) != 0) {
-    Serial.println("Yellow");
-    digitalWrite(LED_YELLOW, HIGH);
-  } else
-    digitalWrite(LED_YELLOW, LOW);
-}
-
-// Returns a '1' bit in the position corresponding to CHOICE_RED, CHOICE_GREEN, etc.
-byte checkButton(void)
-{
-  Serial.println("Buttons");
-  Serial.println(digitalRead(BUTTON_RED));
-  Serial.println(digitalRead(BUTTON_GREEN));
-  Serial.println(digitalRead(BUTTON_BLUE));
-  Serial.println(digitalRead(BUTTON_YELLOW));
-  if (digitalRead(BUTTON_RED) == 0) return(CHOICE_RED); 
-  else if (digitalRead(BUTTON_GREEN) == 0) return(CHOICE_GREEN); 
-  else if (digitalRead(BUTTON_BLUE) == 0) return(CHOICE_BLUE); 
-  else if (digitalRead(BUTTON_YELLOW) == 0) return(CHOICE_YELLOW);
-
-  return(CHOICE_NONE); // If no button is pressed, return none
-}
-
-// Light an LED and play tone
-// Red, upper left:     440Hz - 2.272ms - 1.136ms pulse
-// Green, upper right:  880Hz - 1.136ms - 0.568ms pulse
-// Blue, lower left:    587.33Hz - 1.702ms - 0.851ms pulse
-// Yellow, lower right: 784Hz - 1.276ms - 0.638ms pulse
-void toner(byte which, int buzz_length_ms)
-{
-  setLEDs(which); //Turn on a given LED
-
-  //Play the sound associated with the given LED
-/*  
-
-  switch(which) 
-  {
-  case CHOICE_RED:
-    buzz_sound(buzz_length_ms, 1136); 
-    break;
-  case CHOICE_GREEN:
-    buzz_sound(buzz_length_ms, 568); 
-    break;
-  case CHOICE_BLUE:
-    buzz_sound(buzz_length_ms, 851); 
-    break;
-  case CHOICE_YELLOW:
-    buzz_sound(buzz_length_ms, 638); 
-    break;
-  }
-//
-
-  setLEDs(CHOICE_OFF); // Turn off all LEDs
-}
-
-// Show an "attract mode" display while waiting for user to press button.
-void attractMode(void)
-{
-  while(1) 
-  {
-    Serial.println("attract Anfang");
-    setLEDs(CHOICE_RED);
-    delay(100);
-    if (checkButton() != CHOICE_NONE) return;
-
-    setLEDs(CHOICE_BLUE);
-    delay(100);
-    if (checkButton() != CHOICE_NONE) return;
-
-    setLEDs(CHOICE_GREEN);
-    delay(100);
-    if (checkButton() != CHOICE_NONE) return;
-
-    setLEDs(CHOICE_YELLOW);
-    delay(100);
-    if (checkButton() != CHOICE_NONE) return;
-  }
-}
-int LEDnumber = 0; // Keeps track of which LED we are on during the beegees loop
-
-// Each time this function is called the board moves to the next LED
-void changeLED(void)
-{
-  setLEDs(1 << LEDnumber); // Change the LED
-
-  LEDnumber++; // Goto the next LED
-  if(LEDnumber > 3) LEDnumber = 0; // Wrap the counter if needed
-}
-
-void loop()
-{
-  Serial.println("loop");
-  attractMode(); // Blink lights while waiting for user to press a button
-
-  // Indicate the start of game play
-  setLEDs(CHOICE_RED | CHOICE_GREEN | CHOICE_BLUE | CHOICE_YELLOW); // Turn all LEDs on
-  delay(1000);
-  setLEDs(CHOICE_OFF); // Turn off LEDs
-  delay(250);
-
-  if (gameMode == MODE_MEMORY)
-  {
-    // Play memory game and handle result
-    if (play_memory() == true) 
-      play_winner(); // Player won, play winner tones
-    else 
-      play_loser(); // Player lost, play loser tones
-  }
-
-  if (gameMode == MODE_BATTLE)
-  {
-    play_battle(); // Play game until someone loses
-
-    play_loser(); // Player lost, play loser tones
-  }
-}
-*/
